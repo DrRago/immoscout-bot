@@ -18,7 +18,7 @@ def parse(city: str, zip: str, street: str, district: str, room_num_min: float, 
     :param zip:
     :param street:
     :param district:
-    :param room_nuapartment["data-id"]m_min:
+    :param room_num_min:
     :param room_num_max:
     :param price_min:
     :param price_max:
@@ -57,7 +57,15 @@ def parse(city: str, zip: str, street: str, district: str, room_num_min: float, 
 
 
 def htmlreader(url: str):
-    r = requests.get(url)
+    print(url)
+    headers = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 6.1; WOW64; rv:20.0) Gecko/20100101 Firefox/20.0',
+        'Authority': 'www.immobilienscout24.de',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.9',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Accept-Language': 'en-US,en;q=0.9,de;q=0.8'
+    }
+    r = requests.get(url, headers=headers)
     print("request complete with status code", r.status_code)
     return r.text
 
@@ -110,70 +118,73 @@ def inspect_apartment(apartment: bs4.Tag):
 
 if __name__ == '__main__':
     request_payload = {
-                      "embeds": [
-                          {
-                              "title": "Ich lebe",
-                              "description": "Mein Leben ist cool, ich wurde nähhhhmlich gerade gestartet",
-                              "color": 5216170,
-                              "image": {
-                                  "url": "https://i.imgflip.com/1ocrfs.jpg"
-                              }
-                          }
-                       ]
-                     }
+        "embeds": [
+            {
+                "title": "Ich lebe",
+                "description": "Mein Leben ist cool, ich wurde nähhhhmlich gerade gestartet",
+                "color": 5216170,
+                "image": {
+                    "url": "https://i.imgflip.com/1ocrfs.jpg"
+                }
+            }
+        ]
+    }
     response = requests.post(discord_url, json=request_payload)
-    print(response.status_code)
+    print("discord bot push response:", response.status_code)
 
     try:
-      apartments = parse(*filter_params)
-      while True:
-          try:
-              new_apartments = parse(*filter_params)
-          except requests.exceptions.ConnectionError:
-              continue
+        apartments = parse(*filter_params)
+        while True:
+            try:
+                new_apartments = parse(*filter_params)
+            except requests.exceptions.ConnectionError:
+                continue
 
-          if apartments.keys() != new_apartments.keys():
-              new_keys = new_apartments.keys() - apartments.keys()
-              for id in new_keys:
-                  # discord webhook
-                  request_payload = {
-                      "embeds": [
-                          {
-                              "title": new_apartments.get(id)["title"],
-                              "description": "**{}**\n**{}**\n**{}**".format(new_apartments.get(id)["price"],
-                                                                             new_apartments.get(id)["rooms"],
-                                                                             new_apartments.get(id)["ls"]),
-                              "url": new_apartments.get(id)["url"],
-                              "color": 7506394,
-                              "image": {
-                                  "url": new_apartments.get(id)["image"]
-                              }
-                          }
-                      ]
-                  }
+            if apartments.keys() != new_apartments.keys():
+                new_keys = new_apartments.keys() - apartments.keys()
+                for id in new_keys:
+                    # discord webhook
+                    request_payload = {
+                        "embeds": [
+                            {
+                                "title": new_apartments.get(id)["title"],
+                                "description": "**{}**\n**{}**\n**{}**".format(new_apartments.get(id)["price"],
+                                                                               new_apartments.get(id)["rooms"],
+                                                                               new_apartments.get(id)["ls"]),
+                                "url": new_apartments.get(id)["url"],
+                                "color": 7506394,
+                                "image": {
+                                    "url": new_apartments.get(id)["image"]
+                                }
+                            }
+                        ]
+                    }
 
-                  response = requests.post(discord_url, json=request_payload)
-                  print(response.text)
-                  print(response.status_code)
-                  time.sleep(5)
+                    response = requests.post(discord_url, json=request_payload)
+                    print("Sending new Apartment to discord")
+                    print(response.text)
+                    print(response.status_code)
+                    time.sleep(5)
 
-              apartments = new_apartments
-          time.sleep(600)
+                apartments = new_apartments
+            time.sleep(600)
     except:
-      import traceback
-      request_payload = {
-                      "embeds": [
-                          {
-                              "title": "Ich bin abgestürzt, bitte helft mir",
-                              "description": "Mein leben suckt, gib mir dick\n\n" + traceback.format_exc(),
-                              "color": 16711680,
-                              "image": {
-                                  "url": "https://banner2.cleanpng.com/20190624/tvh/kisspng-stop-sign-clip-art-image-traffic-sign-event-parking-allentown-parking-authority-5d10d437697042.0713188415613839914319.jpg"
-                              }
-                          }
-                      ]
-                  }
+        import traceback
 
-      response = requests.post(discord_url, json=request_payload)
-      print(response.status_code)
-      raise
+        request_payload = {
+            "embeds": [
+                {
+                    "title": "Ich bin abgestürzt, bitte helft mir",
+                    "description": "Mein leben suckt, gib mir dick\n\n" + traceback.format_exc(),
+                    "color": 16711680,
+                    "image": {
+                        "url": "https://banner2.cleanpng.com/20190624/tvh/kisspng-stop-sign-clip-art-image-traffic-sign-event-parking-allentown-parking-authority-5d10d437697042.0713188415613839914319.jpg"
+                    }
+                }
+            ]
+        }
+
+        response = requests.post(discord_url, json=request_payload)
+        print("Sending error message to discrod")
+        print(response.status_code)
+        raise
