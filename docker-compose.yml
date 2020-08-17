@@ -1,0 +1,6 @@
+version: "3.3"
+
+services:
+  apartment_hunter_3000:
+    build: .
+    restart: unless-stopped

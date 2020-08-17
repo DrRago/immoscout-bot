@@ -1,5 +1,3 @@
-from typing import List, Dict
-
 import requests
 import bs4
 import time
@@ -9,92 +7,78 @@ from bs4 import BeautifulSoup
 # immoscout url:
 # https://www.immobilienscout24.de/Suche/radius/wohnung-mieten?centerofsearchaddress={city};{ZIP-code};{street};;;{district}&numberofrooms={num-float-min}-{num-float-max}&price={num-float-min}-{num-float-max}&livingspace={num-float-min}-{num-float-max}&geocoordinates={long-float};{lat-float};{radius-float}
 discord_url = "https://discordapp.com/api/webhooks/712762032713367553/edYMrRoM-5Ild-Ye5Lze2pCyu7NDB50iV3bwMpMksCua4SVHMoRpzMjh8k-SX1pIRQLU"
-immoscout_url = "https://www.immobilienscout24.de/Suche/radius/wohnung-mieten?centerofsearchaddress={};{};{};;;{}&numberofrooms={}-{}&price={}-{}&livingspace={}-{}&geocoordinates={};{};{}"
-filter_params = ["Karlsruhe", "", "", "", 2, 4, 400, 800, 30, 90, 49.008316, 8.402914, 6]
+filter_params = ["Karlsruhe", "", "", "", 2, 4, 400, 700, 45, "", 49.008316, 8.402914, 6]
 
 
-def parse(city: str, zip_code: str, street: str, district: str, room_num_min: float, room_num_max: float,
-          price_min: float,
-          price_max: float, living_space_min: float, living_space_max: float, long: float, lat: float,
-          radius: float) -> Dict:
+def parse(city: str, zip: str, street: str, district: str, room_num_min: float, room_num_max: float, price_min: float,
+          price_max: float, living_space_min: float, living_space_max: float, long: float, lat: float, radius: float):
     """
-    Parse all apartments listed on immoscout according to the given filter params
+    Parse all
+    :param city:
+    :param zip:
+    :param street:
+    :param district:
+    :param room_nuapartment["data-id"]m_min:
+    :param room_num_max:
+    :param price_min:
+    :param price_max:
+    :param living_space_min:
+    :param living_space_max:
+    :param long:
+    :param lat:
+    :param radius:
 
-    :param city: The city filter option
-    :param zip_code: The zip code filter option
-    :param street: The street filter option
-    :param district: The district filter option
-    :param room_num_min: The minimum room amount
-    :param room_num_max: The max room amount
-    :param price_min: The minimum price
-    :param price_max: The maximum price
-    :param living_space_min: The minimum living space
-    :param living_space_max: The maximum living space
-    :param long: Longitude coordinate
-    :param lat: Latitude coordinate
-    :param radius: search radius
-
-    :return: The found apartments
+    :return:
     """
-    url = immoscout_url.format(
-        city, zip_code, street, district, room_num_min, room_num_max, price_min, price_max, living_space_min,
+    url = "https://www.immobilienscout24.de/Suche/radius/wohnung-mieten?centerofsearchaddress={};{};{};;;{}&numberofrooms={}-{}&price={}-{}&livingspace={}-{}&geocoordinates={};{};{}".format(
+        city, zip, street, district, room_num_min, room_num_max, price_min, price_max, living_space_min,
         living_space_max, long, lat, radius
     )
     print("parsing " + url)
-
-    # parsing for each page until the page is empty
-    apts = []
+    apartments = []
     page_num = 1
 
-    html = html_reader(url + "&pagenumber=" + str(page_num))
+    html = htmlreader(url + "&pagenumber=" + str(page_num))
     parsed_apartments = parse_apartment(html)
 
     while len(parsed_apartments) != 0:
         page_num += 1
-        apts.extend(parsed_apartments)
+        apartments.extend(parsed_apartments)
 
-        html = html_reader(url + "&pagenumber=" + str(page_num))
+        html = htmlreader(url + "&pagenumber=" + str(page_num))
         parsed_apartments = parse_apartment(html)
 
-    # convert list to dictionary
-    apts = {apartment["data-id"]: apartment for apartment in apts}
+    apartments = {apartment["data-id"]: apartment for apartment in apartments}
 
-    # parse room information
-    for id in apts:
-        apts[id] = inspect_apartment(apts.get(id))
+    for id in apartments:
+        apartments[id] = inspect_apartment(apartments.get(id))
 
-    return apts
+    return apartments
 
 
-def html_reader(url: str) -> str:
-    """
-    Perform a http get request to a given url
-
-    :param url: The url to request
-    :return: The text of the response
-    """
+def htmlreader(url: str):
     r = requests.get(url)
     print("request complete with status code", r.status_code)
     return r.text
 
 
-def parse_apartment(html: str) -> List[bs4.Tag]:
-    """
-    Parse all apartments of a html page
-
-    :param html: The html page
-    :return: The apartment list item tags as list
-    """
+def parse_apartment(html):
     soup = BeautifulSoup(html, "lxml")
-    return soup.find(id="resultListItems").find_all("li", {"data-id": True}, recursive=False)
+    list_items = soup.find(id="resultListItems")
+    if (not list_items):
+        return []
+    apartments = list_items.find_all("li", {"data-id": True}, recursive=False)
+    return apartments
 
 
-def inspect_apartment(apartment: bs4.Tag) -> Dict:
-    """
-    Parse required information from a li tag of a apartment
-    :param apartment: the li tag
-    :return: the parsed information
-    """
+def inspect_apartment(apartment: bs4.Tag):
+    price = None
+    ls = None  # livingspace
+    rooms = None
+    title = None
+    image = None
+    url = None
+
     criteria = apartment.find_all(class_="result-list-entry__criteria")[0].find_all(
         class_="result-list-entry__primary-criterion")  # type:bs4.Tag
     price = criteria[0].find_all("dd")[0].text
@@ -102,8 +86,6 @@ def inspect_apartment(apartment: bs4.Tag) -> Dict:
     rooms = criteria[2].find_all("dd")[0].find_all(class_="onlySmall")[0].text
     title = apartment.find_all(class_="result-list-entry__brand-title")[0].find(text=True, recursive=False)
 
-    # as image urls may be in data-lazy-src or src this exception handling is required
-    # also there might be no image at all
     try:
         image_tag = apartment.find_all(class_="result-list-entry__gallery-container")[0] \
             .find_all(class_="gallery__image")[0]
@@ -127,34 +109,71 @@ def inspect_apartment(apartment: bs4.Tag) -> Dict:
 
 
 if __name__ == '__main__':
-    apartments = parse(*filter_params)
-    while True:
-        new_apartments = parse(*filter_params)
+    request_payload = {
+                      "embeds": [
+                          {
+                              "title": "Ich lebe",
+                              "description": "Mein Leben ist cool, ich wurde nähhhhmlich gerade gestartet",
+                              "color": 5216170,
+                              "image": {
+                                  "url": "https://i.imgflip.com/1ocrfs.jpg"
+                              }
+                          }
+                       ]
+                     }
+    response = requests.post(discord_url, json=request_payload)
+    print(response.status_code)
 
-        if apartments.keys() != new_apartments.keys():
-            new_keys = new_apartments.keys() - apartments.keys()
-            for id in new_keys:
-                # discord webhook
-                request_payload = {
-                    "embeds": [
-                        {
-                            "title": new_apartments.get(id)["title"],
-                            "description": "**{}**\n**{}**\n**{}**".format(new_apartments.get(id)["price"],
-                                                                           new_apartments.get(id)["rooms"],
-                                                                           new_apartments.get(id)["ls"]),
-                            "url": new_apartments.get(id)["url"],
-                            "color": 7506394,
-                            "image": {
-                                "url": new_apartments.get(id)["image"]
-                            }
-                        }
-                    ]
-                }
+    try:
+      apartments = parse(*filter_params)
+      while True:
+          try:
+              new_apartments = parse(*filter_params)
+          except requests.exceptions.ConnectionError:
+              continue
 
-                response = requests.post(discord_url, json=request_payload)
-                print(response.text)
-                print(response.status_code)
-                time.sleep(5)
+          if apartments.keys() != new_apartments.keys():
+              new_keys = new_apartments.keys() - apartments.keys()
+              for id in new_keys:
+                  # discord webhook
+                  request_payload = {
+                      "embeds": [
+                          {
+                              "title": new_apartments.get(id)["title"],
+                              "description": "**{}**\n**{}**\n**{}**".format(new_apartments.get(id)["price"],
+                                                                             new_apartments.get(id)["rooms"],
+                                                                             new_apartments.get(id)["ls"]),
+                              "url": new_apartments.get(id)["url"],
+                              "color": 7506394,
+                              "image": {
+                                  "url": new_apartments.get(id)["image"]
+                              }
+                          }
+                      ]
+                  }
 
-            apartments = new_apartments
-        time.sleep(300)
+                  response = requests.post(discord_url, json=request_payload)
+                  print(response.text)
+                  print(response.status_code)
+                  time.sleep(5)
+
+              apartments = new_apartments
+          time.sleep(600)
+    except:
+      import traceback
+      request_payload = {
+                      "embeds": [
+                          {
+                              "title": "Ich bin abgestürzt, bitte helft mir",
+                              "description": "Mein leben suckt, gib mir dick\n\n" + traceback.format_exc(),
+                              "color": 16711680,
+                              "image": {
+                                  "url": "https://banner2.cleanpng.com/20190624/tvh/kisspng-stop-sign-clip-art-image-traffic-sign-event-parking-allentown-parking-authority-5d10d437697042.0713188415613839914319.jpg"
+                              }
+                          }
+                      ]
+                  }
+
+      response = requests.post(discord_url, json=request_payload)
+      print(response.status_code)
+      raise
