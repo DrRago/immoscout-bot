@@ -1,17 +1,105 @@
 import requests
 import bs4
 import time
+import cssutils
 
 from bs4 import BeautifulSoup
 
 # immoscout url:
 # https://www.immobilienscout24.de/Suche/radius/wohnung-mieten?centerofsearchaddress={city};{ZIP-code};{street};;;{district}&numberofrooms={num-float-min}-{num-float-max}&price={num-float-min}-{num-float-max}&livingspace={num-float-min}-{num-float-max}&geocoordinates={long-float};{lat-float};{radius-float}
+# wg-gesucht url:
+# https://www.wg-gesucht.de/wohnungen-in-Karlsruhe.68.2.1.0.html?offer_filter=1&city_id=68&sort_column=3&noDeact=1&radLat={lat-float}&radLng={lng-float}&categories%5B%5D=2&rent_types%5B%5D=0&sMin={min-space-int}&rMax={max-rent-int}&radDis={radius-int}&rmMin={min-rooms}&rmMax={max-rooms}
+
 discord_url = "https://discordapp.com/api/webhooks/712762032713367553/edYMrRoM-5Ild-Ye5Lze2pCyu7NDB50iV3bwMpMksCua4SVHMoRpzMjh8k-SX1pIRQLU"
-filter_params = ["Karlsruhe", "", "", "", 2, 4, 400, 700, 45, "", 49.008316, 8.402914, 6]
+filter_params_immoscout = ["Karlsruhe", "", "", "", 2, 4, 400, 700, 45, "", 49.008316, 8.402914, 6]
+filter_params_wg_gesucht = [49.008316, 8.402914, 45, 850, 5000, 2, 4]
 
 
-def parse(city: str, zip: str, street: str, district: str, room_num_min: float, room_num_max: float, price_min: float,
-          price_max: float, living_space_min: float, living_space_max: float, long: float, lat: float, radius: float):
+def parse_wg_gesucht(lat: float, long: float, living_space_min: int, price_max: int, radius: int, room_num_min: int,
+                     room_num_max: int):
+    """
+    Parse all wg gesucht
+    :param lat:
+    :param long:
+    :param living_space_min:
+    :param price_max:
+    :param radius:
+    :param room_num_min:
+    :param room_num_max:
+
+    :return:
+    """
+    apartments = []
+    page_num = 0
+    url = "https://www.wg-gesucht.de/wohnungen-in-Karlsruhe.68.2.1.{}.html?category=2&city_id=68&sort_column=3&noDeact=1&radLat={}&radLng={}&categories%5B%5D=2&rent_types%5B%5D=0&sMin={}&rMax={}&radDis={}&rmMin={}&rmMax={}".format(
+        page_num, lat, long, living_space_min, price_max, radius, room_num_min, room_num_max
+    )
+
+    print("parsing wg gesucht")
+
+    html = htmlreader(url)
+    parsed_apartments = parse_apartment_wg_gesucht(html)
+
+    while len(parsed_apartments) != 0:
+        page_num += 1
+
+        apartments.extend(parsed_apartments)
+
+        url = "https://www.wg-gesucht.de/wohnungen-in-Karlsruhe.68.2.1.{}.html?category=2&city_id=68&sort_column=3&noDeact=1&radLat={}&radLng={}&categories%5B%5D=2&rent_types%5B%5D=0&sMin={}&rMax={}&radDis={}&rmMin={}&rmMax={}".format(
+            page_num, lat, long, living_space_min, price_max, radius, room_num_min, room_num_max
+        )
+        html = htmlreader(url)
+        parsed_apartments = parse_apartment_wg_gesucht(html)
+
+
+    apartments = {apartment["data-id"]: apartment for apartment in apartments}
+
+    for id in apartments:
+        apartments[id] = inspect_apartment_wg_gesucht(apartments.get(id))
+
+    return apartments
+
+
+def parse_apartment_wg_gesucht(html: str):
+    soup = BeautifulSoup(html, "lxml")
+    list_items = soup.find_all("div", class_="offer_list_item")
+    return list_items
+
+
+def inspect_apartment_wg_gesucht(apartment: bs4.Tag):
+    price = None
+    ls = None  # livingspace
+    rooms = " "
+    title = None
+    image = None
+    url = None
+
+    middle_row = apartment.find("div", class_="row noprint middle")
+    price = middle_row.find_all("div")[0].text.strip()
+    ls = middle_row.find_all("div")[2].text.strip()
+
+    top_row = apartment.find("div", class_="row noprint")
+    title = top_row.find_all("div")[0].text.strip()
+
+    img_style = apartment.find("div", class_="card_image").find("a")['style']
+    style = cssutils.parseStyle(img_style)
+    image = style['background-image'][4:-1]
+
+    url = "https://wg-gesucht.de/" + apartment.find("div", class_="card_image").find("a")["href"]
+
+    return {
+        "price": price,
+        "ls": ls,
+        "rooms": rooms,
+        "title": title,
+        "image": image,
+        "url": url
+    }
+
+
+def parse_immoscout(city: str, zip: str, street: str, district: str, room_num_min: float, room_num_max: float,
+                    price_min: float, price_max: float, living_space_min: float, living_space_max: float, long: float,
+                    lat: float, radius: float):
     """
     Parse all
     :param city:
@@ -133,10 +221,10 @@ if __name__ == '__main__':
     print("discord bot push response:", response.status_code)
 
     try:
-        apartments = parse(*filter_params)
+        apartments = {**parse_immoscout(*filter_params_immoscout), **parse_wg_gesucht(*filter_params_wg_gesucht)}
         while True:
             try:
-                new_apartments = parse(*filter_params)
+                new_apartments = {**parse_immoscout(*filter_params_immoscout), **parse_wg_gesucht(*filter_params_wg_gesucht)}
             except requests.exceptions.ConnectionError:
                 continue
 
